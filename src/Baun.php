@@ -425,16 +425,15 @@ class Baun {
 			}
 			$excerpt = '';
 			if (isset($data['content'])) {
-				$excerpt = strip_tags($data['content']);
-				$words = explode(' ', $excerpt);
-				if (count($words) > $this->config->get('blog.excerpt_words') && $this->config->get('blog.excerpt_words') > 0) {
-					$excerpt = implode(' ', array_slice($words, 0, $this->config->get('blog.excerpt_words'))) . '...';
+				$excerpt = $data['content'];
+				if ($this->config->get('blog.excerpt_words') > 0){
+					$excerpt = $this->truncate($excerpt, $this->config->get('blog.excerpt_words'));
 				}
 			}
-                        $content = '';
-                        if (isset($data['content'])) {
-                                $content = $data['content'];
-                        }
+			$content = '';
+			if (isset($data['content'])) {
+							$content = $data['content'];
+			}
 			$published = date($this->config->get('blog.date_format'));
 			if (preg_match('/^\d+\-/', $post['raw'])) {
 				list($time, $path) = explode('-', $post['raw'], 2);
@@ -472,6 +471,89 @@ class Baun {
 		}
 
 		return $data;
+	}
+
+	// The following is a heavily modified function lifted from CakePHP.  In
+	// short, it cleanly truncates HTML code by the length of a defined number of
+	// displayed words.  Open HTML tags are properly closed.
+	//
+	// Copyright (c) 2005-present, Cake Software Foundation, Inc.
+	// (https://cakefoundation.org)
+	//
+	// Permission is hereby granted, free of charge, to any person obtaining
+	// a copy of this software and associated documentation files (the
+	// "Software"), to deal in the Software without restriction, including
+	// without limitation the rights to use, copy, modify, merge, publish,
+	// distribute, sublicense, and/or sell copies of the Software, and to
+	// permit persons to whom the Software is furnished to do so, subject to
+	// the following conditions:
+	//
+	// The above copyright notice and this permission notice shall be
+	// included in all copies or substantial portions of the Software.
+	//
+	// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+	// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+	// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+	// NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+	// LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+	// OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+	// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+	protected function truncate($text, $length)
+	{
+			$prefix = '';
+			$suffix = '...';
+
+			$truncateLength = 0;
+			$totalLength = 0;
+			$openTags = [];
+			$truncate = '';
+
+			preg_match_all('/(<\/?([\w+]+)[^>]*>)?([^<>]*)/', $text, $tags, PREG_SET_ORDER);
+			foreach ($tags as $tag) {
+					$contentLength = 0;
+					$words = array();
+					if (!in_array($tag[2], array('style', 'script'), true)) {
+							$words = preg_split('/ /', $tag[3], -1, PREG_SPLIT_OFFSET_CAPTURE);
+							$contentLength = count($words);
+					}
+
+					if (!preg_match('/img|br|input|hr|area|base|basefont|col|frame|isindex|link|meta|param/i', $tag[2])) {
+							if (preg_match('/<[\w]+[^>]*>/', $tag[0])) {
+									array_unshift($openTags, $tag[2]);
+							} elseif (preg_match('/<\/([\w]+)[^>]*>/', $tag[0], $closeTag)) {
+									$pos = array_search($closeTag[1], $openTags, true);
+									if ($pos !== false) {
+											array_splice($openTags, $pos, 1);
+									}
+							}
+					}
+
+					$prefix .= $tag[1];
+
+					if ($totalLength + $contentLength > $length) {
+							$truncate = $tag[3];
+							$truncateLength = $words[$length - $totalLength][1];
+					} else {
+							$prefix .= $tag[3];
+					}
+
+					$totalLength += $contentLength;
+					if ($totalLength > $length) {
+							break;
+					}
+			}
+
+			if ($totalLength <= $length) {
+					return $text;
+			}
+
+			foreach ($openTags as $tag) {
+					$suffix .= '</' . $tag . '>';
+			}
+
+			$result = substr($truncate, 0, $truncateLength);
+
+			return $prefix . $result . $suffix;
 	}
 
 }
